@@ -1,7 +1,7 @@
 sync:
-  fetched_at: '2026-08-18T06:20:26.706132+00:00'
-  source_url: https://raw.githubusercontent.com/cabforum/servercert/ad77bf1975fe1dffebb9cbdb7280eb80b94f5c45/docs/BR.md
-  source_sha256: 057b4aad56cbb0f2ebd32b30b68781f4d42617fb65ca2bed9068c71a99be2976
+  fetched_at: '2026-09-08T10:10:34.871151+00:00'
+  source_url: https://raw.githubusercontent.com/cabforum/servercert/663657c4539065c8ceab74298631529ae4bc2520/docs/BR.md
+  source_sha256: e4a399749c29291bbff379173ab9af716786d56d4b03b9b84ebdb1ee58eecc79
 extracted:
   validity_day_values:
   - 10

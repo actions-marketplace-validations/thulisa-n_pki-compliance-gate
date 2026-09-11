@@ -1,156 +1,101 @@
-# CertGuard Engine
+# PKI Compliance Gate (CertGuard Engine)
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-pytest-informational)
-![CI](https://img.shields.io/badge/ci-github%20actions-black)
+![Tests](https://img.shields.io/badge/tests-83%20passed-brightgreen)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![GitHub Action](https://img.shields.io/badge/github--action-v1-blue)
 
-CertGuard Engine is a policy-as-code PKI gate for X.509 certificates.
-It runs security validation in CI and emits audit evidence artifacts.
+**PKI Compliance Gate** (CertGuard Engine) is an automated Policy-as-Code engine for X.509 certificates, CA/Browser Forum Baseline Requirements, and API TLS posture governance.
 
-## In 30 seconds
+It serves as the **Single Source of Truth** for digital certificate profiles, preventing prose-to-code policy drift and mass certificate revocation events.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python src/main.py --cert tests/certificates/valid_cert.pem
+---
+
+## ⚡ Quick Start (30 Seconds)
+
+### Option 1: GitHub Action in CI/CD (Recommended)
+Add PKI Compliance Gate to your `.github/workflows/compliance.yml`:
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - name: Run PKI Compliance Gate
+    uses: thulisa-n/pki-compliance-gate@v1
+    with:
+      cert: 'tests/certificates/valid_cert.pem'
+      policy: 'policies/cabf_policy.yaml'
 ```
 
-JSON output:
-
+### Option 2: Local CLI Installation
 ```bash
-python src/main.py --cert tests/certificates/valid_cert.pem --output json
+# Install package
+pip install pki-compliance-gate
+
+# Evaluate certificate
+pki-gate --cert server.crt --policy policies/cabf_policy.yaml
+
+# Export Single Source of Truth CP/CPS Section 7 Documentation
+pki-gate --mode export-cps-doc --policy policies/cabf_policy.yaml --summary-output CPS_SECTION_7.md
 ```
 
-## How It Flows
+---
+
+## 🛡️ Key Features
+
+- **Single Source of Truth Policy Engine**: One YAML/Rego profile (`policies/cabf_policy.yaml`) drives pre-issuance linting, CI/CD gates, and auto-generates human-readable CP/CPS Section 7 documentation (`--mode export-cps-doc`).
+- **Policy-as-Code Validation**: Enforces max certificate validity (e.g. 90-day/200-day transition), minimum key sizes (RSA >= 2048), prohibited signature algorithms (SHA-1/MD5), and blocked internal domain suffixes.
+- **Active API TLS Posture Scanning**: `--mode apisec --endpoint example.com` checks live endpoints for cipher suite security, TLS version compliance, and certificate expiration.
+- **OIDC & Keyless Provenance Signing**: Signs compliance reports with Sigstore / Rekor provenance attestation (`release_provenance.json`).
+- **Risk-Based Exit Codes**:
+  - `0`: Fully compliant
+  - `1`: Isolated low-severity warnings
+  - `2`: Medium/High severity or lint failures
+  - `3`: Critical security violation (blocks merge)
+
+---
+
+## 🔄 How It Flows
 
 ```mermaid
 flowchart LR
-    A[PEM Certificate] --> B[X509 Parser]
-    B --> C[Policy Validator]
+    A[PEM Certificate / Domain] --> B[X509 & TLS Parser]
+    B --> C[Policy Validator Engine]
     C --> D[Compliance Report]
-    C --> E[Audit Evidence]
-    D --> F[Exit Code]
+    C --> E[CP/CPS Docs Exporter]
+    C --> F[Audit Evidence Vault]
+    D --> G[CI Exit Code 0..3]
 ```
 
-## Implemented Security Controls
+---
 
-- Policy-as-code validation: `policies/*.yaml` + optional Rego (`policies/rego/validity.rego`)
-- CI compliance gate: `.github/workflows/compliance.yml`
-- SAST/SCA: `.github/workflows/security-scans.yml`
-- Code analysis: `.github/workflows/codeql.yml`
-- Secret detection: `.github/workflows/secrets-scan.yml`
-- IaC scan (Kubernetes manifests): `.github/workflows/iac-scan.yml`
-- Keyless provenance signing (OIDC + Rekor): `.github/workflows/compliance.yml`
-- API TLS posture checks: `--mode apisec`
-- Controlled exceptions: `--waiver-file` (ticket + expiry required)
+## 🛠️ Execution Modes
 
-## Evaluate Exit Codes
+| Mode | Command Example | Description |
+| :--- | :--- | :--- |
+| `evaluate` | `pki-gate --cert server.crt` | Runs full policy validation on a certificate file. |
+| `export-cps-doc` | `pki-gate --mode export-cps-doc` | Compiles YAML policy into CP/CPS Section 7 Markdown documentation. |
+| `apisec` | `pki-gate --mode apisec --endpoint example.com` | Scans live domain endpoint for TLS posture and certificate status. |
+| `triage` | `pki-gate --mode triage --report-input report.json` | Analyzes compliance findings and prioritizes bug tickets. |
+| `assure` | `pki-gate --mode assure --report-input report.json` | Validates audit evidence integrity. |
+| `watch` | `pki-gate --mode watch` | Checks policy against external security standards baselines. |
+| `heal` | `pki-gate --mode heal --healed-cert new_cert.pem` | Generates remediation plan and evaluates re-issued certificate. |
 
-- `0`: compliant and no lint failure
-- `1`: only low-severity policy failures
-- `2`: medium/high failures or lint-only failure
-- `3`: critical policy failure
+---
 
-## Risk-Based Gating
-
-- `critical` or `high/medium` failures block merge readiness (`exit 2/3`).
-- low-severity-only failures are isolated (`exit 1`) for targeted remediation.
-- time-bound exceptions are supported via waiver files with ticket and expiry requirements.
-
-## Current Scope
-
-- In scope: certificate policy validation, CI security gates, IaC manifest checks, API TLS posture checks.
-- Not in scope yet: container image scanning (no container images are built/published in this repo).
-
-## Common Commands
-
-```bash
-# Evaluate
-python src/main.py --cert tests/certificates/valid_cert.pem
-
-# Triage an existing report
-python src/main.py --mode triage --report-input reports/compliance_report.json
-
-# API TLS posture check
-python src/main.py --mode apisec --endpoint https://example.com
-```
-
-## Modes
-
-- `evaluate`, `triage`, `assure`, `watch`, `heal`, `summary`, `trend`, `apisec`, `signals`
-
-## Inputs
-
-- `--cert` (required for `evaluate`)
-- `--policy` (default: `policies/cabf_policy.yaml`)
-- `--dcv-attestation`, `--issuance-attestation`, `--waiver-file`, `--issuer-cert`
-
-## Key Outputs
-
-- `reports/compliance_report.json`
-- `reports/compliance_report.json.seal`
-- `audit_evidence/policy_checks.json`
-- `audit_evidence/lint_results.json`
-- `audit_evidence/waiver_results.json`
-- `audit_evidence/opa_results.json`
-- `audit_evidence/evidence_manifest.json`
-- `audit_evidence/compliance_decisions.jsonl`
-
-## Test Evidence in GitHub
-
-- PR checks: `Compliance Gate` publishes a `Pytest Results` check from JUnit XML.
-- Run artifacts: download `certguard-compliance-artifacts-<run_id>` to get:
-  - `pytest-junit.xml`
-  - `pytest-report.html` (self-contained HTML report)
-- Evidence reports are CI-generated; local `reports/test-results/` is intentionally git-ignored.
-
-## Provenance Verification
-
-- `Compliance Gate` signs `release_provenance.json` with cosign keyless signing only on `push` to `main` (release context).
-- `Compliance Gate` also publishes a GitHub native build attestation for `release_provenance.json` on `push` to `main`.
-- Both verification paths are backed by the same Sigstore trust foundation (Fulcio/Rekor); the benefit is broader verification UX, not a separate root of trust.
-- Evidence bundle includes:
-  - `release_provenance.cosign.sig`
-  - `release_provenance.cosign.crt`
-  - `release_provenance.cosign.bundle`
-- Verify with GitHub CLI (recommended for most users):
-  - `gh attestation verify reports/release_provenance.json --repo thulisa-n/pki-compliance-gate --cert-identity-regex '^https://github.com/thulisa-n/pki-compliance-gate/.github/workflows/compliance.yml@refs/heads/main$'`
-- Verify with cosign + Rekor tooling:
-  - `cosign verify-blob --bundle release_provenance.cosign.bundle --certificate release_provenance.cosign.crt --signature release_provenance.cosign.sig --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/thulisa-n/pki-compliance-gate/.github/workflows/compliance.yml@refs/heads/main$' release_provenance.json`
-- The cosign bundle is retained as portability evidence so provenance can be re-verified later without relying on repo-stored keys.
-- GitHub-native attestations are visible in the repository **Attestations** tab for release-context runs.
-
-## CI Workflows
-
-- `compliance.yml`
-- `security-scans.yml`
-- `codeql.yml`
-- `secrets-scan.yml`
-- `iac-scan.yml`
-- `standards-sync.yml`
-- `standards-pr-guard.yml`
-- `kyverno-policy.yml`
-- `docs-render.yml`
-
-Required status checks are enforced via GitHub branch protection/rulesets.
-
-## Repo Map
+## 📁 Repository Structure
 
 ```text
-src/certguard/      core agents + engine
-src/main.py         CLI entrypoint
-policies/           policy files and profiles
-tests/              automated tests
-deployments/kyverno/ kyverno policy examples
-.github/workflows/  CI/CD workflows
+src/certguard/        Core agents, X.509 parser, & engine logic
+src/certguard/policy_exporter.py  CP/CPS Single Source of Truth exporter
+src/main.py           CLI entrypoint
+policies/             Policy YAML profiles & Rego rules
+tests/                Automated test suite (83 tests)
+.github/action.yml    GitHub Action Marketplace definition file
+.github/workflows/    CI/CD workflows & compliance guardrails
 ```
 
-## More Docs
+---
 
-- `CONTRIBUTING.md`
-- `docs/DEVSECOPS_ALIGNMENT.md`
-- `docs/PROJECT_STATUS.md`
-- `docs/COMPLIANCE_DEBUG_WALKTHROUGH.md`
-- `docs/EVIDENCE_LIFECYCLE.md`
-- `docs/KYVERNO_POLICY_REPORTING.md`
+## 📄 License
+
+Licensed under the [Apache License 2.0](LICENSE).

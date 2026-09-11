@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from certguard.agents.base import BaseAgent
 from certguard.models import AgentResult, CheckResult, Status
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return timestamp.replace(tzinfo=timestamp.tzinfo or UTC)
+
 
 CHECK_METADATA: dict[str, dict[str, str]] = {
     "validity_days": {
@@ -271,19 +282,47 @@ class PolicyValidatorAgent(BaseAgent):
         not_after = parser_data.get("not_after")
         evaluated_at = parser_data.get("evaluated_at")
         days_until_expiry = parser_data.get("days_until_expiry")
+        evaluation_time = _parse_timestamp(evaluated_at) or datetime.now(UTC)
+        parsed_not_after = _parse_timestamp(not_after)
+        parsed_not_before = _parse_timestamp(parser_data.get("not_before"))
+
+        raw_expired = parser_data.get("is_expired")
+        if isinstance(raw_expired, bool):
+            is_expired: bool | None = raw_expired
+        elif parsed_not_after is not None:
+            is_expired = parsed_not_after < evaluation_time
+        else:
+            is_expired = None
+
+        raw_not_yet = parser_data.get("is_not_yet_valid")
+        if isinstance(raw_not_yet, bool):
+            not_yet: bool | None = raw_not_yet
+        elif parsed_not_before is not None:
+            not_yet = parsed_not_before > evaluation_time
+        else:
+            not_yet = None
 
         if cert_cfg["reject_expired"]:
-            is_expired = bool(parser_data.get("is_expired"))
+            if is_expired is True and isinstance(days_until_expiry, int):
+                expiry_details = (
+                    f"Certificate expired on {not_after} "
+                    f"({abs(days_until_expiry)} days ago as at {evaluated_at})."
+                )
+            elif is_expired is True:
+                expiry_details = f"Certificate expired on {not_after}."
+            elif is_expired is None:
+                expiry_details = (
+                    "Certificate expiry state cannot be established from parser evidence."
+                )
+            else:
+                expiry_details = (
+                    f"Certificate is within its validity window; expires {not_after}."
+                )
             checks.append(
                 self._check(
                     "certificate_not_expired",
-                    not is_expired,
-                    (
-                        f"Certificate expired on {not_after} "
-                        f"({abs(days_until_expiry)} days ago as at {evaluated_at})."
-                        if is_expired
-                        else f"Certificate is within its validity window; expires {not_after}."
-                    ),
+                    is_expired is False,
+                    expiry_details,
                     policy_value="notAfter must be in the future",
                     actual_value=not_after,
                 )
@@ -299,16 +338,22 @@ class PolicyValidatorAgent(BaseAgent):
             )
 
         if cert_cfg["reject_not_yet_valid"]:
-            not_yet = bool(parser_data.get("is_not_yet_valid"))
+            if not_yet is True:
+                not_yet_details = (
+                    f"Certificate is not valid until {parser_data.get('not_before')}."
+                )
+            elif not_yet is None:
+                not_yet_details = (
+                    "Certificate start-of-validity state cannot be established "
+                    "from parser evidence."
+                )
+            else:
+                not_yet_details = "Certificate notBefore time has passed."
             checks.append(
                 self._check(
                     "certificate_not_yet_valid",
-                    not not_yet,
-                    (
-                        f"Certificate is not valid until {parser_data.get('not_before')}."
-                        if not_yet
-                        else "Certificate notBefore time has passed."
-                    ),
+                    not_yet is False,
+                    not_yet_details,
                     policy_value="notBefore must be in the past",
                     actual_value=parser_data.get("not_before"),
                 )
@@ -325,7 +370,16 @@ class PolicyValidatorAgent(BaseAgent):
             )
 
         warn_days = cert_cfg["warn_if_expires_within_days"]
-        if warn_days > 0:
+        if warn_days > 0 and (is_expired is True or not_yet is True):
+            checks.append(
+                self._na(
+                    "certificate_expiry_window",
+                    "Renewal-window guidance does not apply outside the certificate validity window.",
+                    policy_value=warn_days,
+                    actual_value=days_until_expiry,
+                )
+            )
+        elif warn_days > 0:
             inside_window = (
                 isinstance(days_until_expiry, int) and days_until_expiry <= warn_days
             )
@@ -585,10 +639,10 @@ class PolicyValidatorAgent(BaseAgent):
         except ValueError:
             return False, "DCV validated_at timestamp is not ISO-8601.", None
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        age_days = (now - timestamp.astimezone(timezone.utc)).days
+            timestamp = timestamp.replace(tzinfo=UTC)
+        age_days = (now - timestamp.astimezone(UTC)).days
         if age_days < 0:
             return False, "DCV validated_at is in the future.", age_days
         if age_days <= max_age_days:

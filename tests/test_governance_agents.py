@@ -6,8 +6,17 @@ from pathlib import Path
 from certguard.agents.bug_triage import BugTriageAgent
 from certguard.agents.compliance_assurance import ComplianceAssuranceAgent
 from certguard.agents.evidence_vault import EvidenceVaultAgent
+from certguard.agents.policy_validator import ALL_CONTROL_NAMES
 from certguard.agents.remediation import RemediationAgent
 from certguard.agents.standards_watch import StandardsWatchAgent
+
+LEGACY_ASSURANCE_CONTROLS = [
+    "validity_days",
+    "san_extension",
+    "rsa_key_size",
+    "signature_algorithm",
+    "internal_domain_check",
+]
 
 
 def _sample_non_compliant_report() -> dict:
@@ -134,7 +143,9 @@ def test_compliance_assurance_reports_not_applicable_controls() -> None:
             {"name": "internal_domain_check", "status": "not_applicable"},
         ],
     }
-    result = agent.run({"report": report})
+    result = agent.run(
+        {"report": report, "required_controls": LEGACY_ASSURANCE_CONTROLS}
+    )
 
     assert result.success is True
     check = next(
@@ -142,6 +153,24 @@ def test_compliance_assurance_reports_not_applicable_controls() -> None:
     )
     assert check.status == "not_applicable"
     assert result.data["controls_not_applicable"] == 1
+
+
+def test_compliance_assurance_defaults_to_the_full_control_registry() -> None:
+    report = {
+        "compliant": True,
+        "checks": [
+            {
+                "name": name,
+                "status": "pass" if name == "validity_days" else "not_applicable",
+            }
+            for name in ALL_CONTROL_NAMES
+        ],
+    }
+
+    result = ComplianceAssuranceAgent().run({"report": report})
+
+    assert result.success is True
+    assert result.data["required_controls"] == list(ALL_CONTROL_NAMES)
 
 
 def test_compliance_assurance_reports_waived_controls() -> None:

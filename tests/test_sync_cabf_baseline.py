@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-
 from scripts.sync_cabf_baseline import main
 
 BR_TEXT = """# Baseline Requirements
@@ -22,7 +21,7 @@ def _write_source(tmp_path: Path, text: str) -> Path:
     return path
 
 
-def test_first_run_records_digest_without_failing(tmp_path: Path) -> None:
+def test_first_run_records_digest_and_requests_review(tmp_path: Path) -> None:
     source = _write_source(tmp_path, BR_TEXT)
     snapshot = tmp_path / "snapshot.yaml"
 
@@ -34,10 +33,11 @@ def test_first_run_records_digest_without_failing(tmp_path: Path) -> None:
         ]
     )
 
-    assert code == 0
+    assert code == 1
     payload = yaml.safe_load(snapshot.read_text(encoding="utf-8"))
     assert payload["sync"]["first_run"] is True
     assert payload["sync"]["source_sha256"]
+    assert "fetched_at" not in payload["sync"]
 
 
 def test_unchanged_source_does_not_raise(tmp_path: Path) -> None:
@@ -49,10 +49,10 @@ def test_unchanged_source_does_not_raise(tmp_path: Path) -> None:
         "--fail-on-change",
     ]
 
+    assert main(args) == 1
+    first_snapshot = snapshot.read_bytes()
     assert main(args) == 0
-    assert main(args) == 0
-    payload = yaml.safe_load(snapshot.read_text(encoding="utf-8"))
-    assert payload["sync"]["source_changed"] is False
+    assert snapshot.read_bytes() == first_snapshot
 
 
 def test_changed_source_raises_for_human_review(tmp_path: Path) -> None:

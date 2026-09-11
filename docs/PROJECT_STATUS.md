@@ -14,7 +14,7 @@ This document tracks implemented capabilities in a detailed, phase-oriented form
   - internal domain suffix blocking
 - **Compliance gate engine**
   - pass/fail decision with explicit check results
-  - compliance score and risk classification output
+  - finding counts, control coverage, and risk classification output
   - severity-based exit codes for pipeline-friendly behavior
 - **Evidence generation**
   - `reports/compliance_report.json`

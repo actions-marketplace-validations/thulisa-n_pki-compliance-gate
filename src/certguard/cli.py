@@ -1,27 +1,29 @@
 from __future__ import annotations
 
 import argparse
-from importlib.resources import files
 import json
 import os
-from pathlib import Path
 import sys
+from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 import yaml
 
+from certguard import __version__
+from certguard.agents.api_tls_posture import ApiTlsPostureAgent
 from certguard.agents.bug_triage import BugTriageAgent
 from certguard.agents.compliance_assurance import ComplianceAssuranceAgent
-from certguard.agents.api_tls_posture import ApiTlsPostureAgent
+from certguard.agents.external_signal_watch import ExternalSignalWatchAgent
 from certguard.agents.remediation import RemediationAgent
 from certguard.agents.reviewer_summary import ReviewerSummaryAgent
 from certguard.agents.standards_watch import StandardsWatchAgent
-from certguard.agents.external_signal_watch import ExternalSignalWatchAgent
 from certguard.agents.trend_snapshot import TrendSnapshotAgent
 from certguard.engine import ComplianceGateEngine
 from certguard.governance import enforce_protected_context
 from certguard.models import SEVERITY_ORDER, ComplianceReport
-from certguard import __version__
+from certguard.policy import load_policy
+
 
 def packaged_policy_path() -> str:
     return str(files("certguard.data").joinpath("cabf_policy.yaml"))
@@ -117,6 +119,10 @@ def parse_args() -> argparse.Namespace:
         "--watch-output",
         default="reports/standards_watch_report.json",
         help="Path for standards watch output JSON",
+    )
+    parser.add_argument(
+        "--as-of",
+        help="ISO date used by watch mode instead of today's UTC date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "--healed-cert",
@@ -286,7 +292,7 @@ def _print_report(
         for severity in SEVERITY_ORDER
         if report.findings.get(severity)
     )
-    print(f"Findings: {findings or 'none'}")
+    print(f"Control findings: {findings or 'none'}")
     coverage = report.coverage
     print(
         f"Coverage: {coverage['controls_evaluated']} of "
@@ -339,7 +345,7 @@ def _run_assure(args: argparse.Namespace) -> int:
 
 
 def _run_watch(args: argparse.Namespace) -> int:
-    policy = _read_yaml(Path(args.policy))
+    policy = load_policy(Path(args.policy))
     baseline = _read_yaml(Path(args.standards_baseline))
     if not isinstance(policy, dict):
         raise ValueError(f"--policy must contain a YAML object: {args.policy}")
@@ -349,7 +355,9 @@ def _run_watch(args: argparse.Namespace) -> int:
         )
 
     agent = StandardsWatchAgent()
-    result = agent.run({"policy": policy, "baseline": baseline})
+    result = agent.run(
+        {"policy": policy, "baseline": baseline, "as_of": args.as_of}
+    )
     output_path = Path(args.watch_output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(

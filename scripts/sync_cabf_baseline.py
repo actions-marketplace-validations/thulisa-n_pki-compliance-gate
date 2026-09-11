@@ -27,7 +27,6 @@ import argparse
 import hashlib
 import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -90,7 +89,20 @@ def main(argv: list[str] | None = None) -> int:
     snapshot_path = Path(args.snapshot_file)
     previous = _load_previous_snapshot(snapshot_path)
     previous_sha = previous.get("sync", {}).get("source_sha256")
+    first_run = previous_sha is None
     changed = previous_sha is not None and previous_sha != source_sha256
+    requires_review = first_run or changed
+
+    print(f"source: {source_origin}")
+    print(f"sha256: {source_sha256}")
+    print(f"changed: {changed}")
+
+    # Do not rewrite a committed snapshot merely to record the current time or
+    # a different commit-pinned URL for identical content. A clean no-op keeps
+    # the scheduled workflow from opening an empty PR every week.
+    if not requires_review:
+        print("snapshot unchanged")
+        return 0
 
     baseline = yaml.safe_load(
         Path(args.baseline_file).read_text(encoding="utf-8")
@@ -99,12 +111,11 @@ def main(argv: list[str] | None = None) -> int:
 
     snapshot = {
         "sync": {
-            "fetched_at": datetime.now(timezone.utc).isoformat(),
             "source_url": source_origin,
             "source_sha256": source_sha256,
             "previous_source_sha256": previous_sha,
             "source_changed": changed,
-            "first_run": previous_sha is None,
+            "first_run": first_run,
         },
         "review": {
             "note": (
@@ -114,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             "action_required": (
                 "Re-read the CABF ballot schedule and confirm the dated entries "
                 "in policies/standards_baseline.yaml."
-                if changed
+                if requires_review
                 else "None. Upstream document digest is unchanged."
             ),
             "tracked_schedule": tracked_schedule,
@@ -131,12 +142,9 @@ def main(argv: list[str] | None = None) -> int:
         yaml.safe_dump(snapshot, sort_keys=False), encoding="utf-8"
     )
 
-    print(f"source: {source_origin}")
-    print(f"sha256: {source_sha256}")
-    print(f"changed: {changed}")
     print(f"snapshot written to {snapshot_path}")
 
-    if changed and args.fail_on_change:
+    if requires_review and args.fail_on_change:
         print(
             "Upstream Baseline Requirements changed. A human must review "
             f"{args.baseline_file}.",

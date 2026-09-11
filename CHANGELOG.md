@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-09-11
+
+Post-release hardening for the 0.2.0 correctness changes.
+
+### Fixed
+
+- Recompute certificate validity state from timestamps when legacy parser
+  payloads omit boolean flags, and fail closed when validity evidence is absent.
+- Do not emit renewal-window findings for expired or not-yet-valid certificates.
+- Treat future standards-readiness gaps as planning information rather than
+  current failed controls, and ignore DCV age while DCV evidence is disabled.
+- Load watch-mode policies through the same default-merging path as evaluation
+  mode and support reproducible `--as-of YYYY-MM-DD` checks.
+- Avoid weekly standards-sync snapshot churn when the upstream digest is
+  unchanged.
+- Regenerate time-sensitive certificate fixtures before distribution smoke
+  tests.
+- Restrict package discovery to the public `certguard` namespace and explicitly
+  prevent forks or private repositories from publishing the public PyPI name.
+
 ## [0.2.0] - 2026-09-11
 
 A correctness release. Three false negatives meant certificates that should

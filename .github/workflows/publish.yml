@@ -32,7 +32,7 @@ jobs:
         run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
 
   publish-pypi:
-    if: ${{ github.event_name == 'release' && vars.PYPI_PUBLISH_ENABLED == 'true' }}
+    if: ${{ github.repository == 'thulisa-n/pki-compliance-gate' && github.event_name == 'release' && vars.PYPI_PUBLISH_ENABLED == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     environment:

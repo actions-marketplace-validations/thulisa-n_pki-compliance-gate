@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from certguard.agents.base import BaseAgent
+from certguard.agents.policy_validator import ALL_CONTROL_NAMES
 from certguard.models import AgentResult, CheckResult
 
 
@@ -39,13 +40,7 @@ class ComplianceAssuranceAgent(BaseAgent):
 
         required_controls = context.get(
             "required_controls",
-            [
-                "validity_days",
-                "san_extension",
-                "rsa_key_size",
-                "signature_algorithm",
-                "internal_domain_check",
-            ],
+            list(ALL_CONTROL_NAMES),
         )
 
         assurance_checks: list[CheckResult] = []

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from certguard.agents.base import BaseAgent
@@ -45,6 +45,7 @@ class StandardsWatchAgent(BaseAgent):
 
         policy_max_validity = self._get_nested(policy, "certificate.max_validity_days")
         policy_dcv_reuse = self._get_nested(policy, "dcv.max_age_days")
+        dcv_required = self._get_nested(policy, "dcv.required") is True
 
         if active_phase is None:
             checks.append(
@@ -77,23 +78,41 @@ class StandardsWatchAgent(BaseAgent):
                     ),
                 )
             )
-            checks.append(
-                self._at_most(
-                    "dcv_reuse_days",
-                    actual=policy_dcv_reuse,
-                    limit=active_phase["dcv_reuse_days"],
-                    drifts=drifts,
-                    context_note=(
-                        f"phase effective {active_phase['effective'].isoformat()}"
-                    ),
+            if dcv_required:
+                checks.append(
+                    self._at_most(
+                        "dcv_reuse_days",
+                        actual=policy_dcv_reuse,
+                        limit=active_phase["dcv_reuse_days"],
+                        drifts=drifts,
+                        context_note=(
+                            f"phase effective {active_phase['effective'].isoformat()}"
+                        ),
+                    )
                 )
-            )
+            else:
+                checks.append(
+                    CheckResult(
+                        name="dcv_reuse_days_alignment",
+                        status="not_applicable",
+                        details="DCV evidence is disabled by policy (dcv.required=false).",
+                        category="STANDARDS",
+                    )
+                )
 
         if next_phase is not None:
-            for field, actual, limit in (
-                ("certificate.max_validity_days", policy_max_validity, next_phase["max_validity_days"]),
-                ("dcv.max_age_days", policy_dcv_reuse, next_phase["dcv_reuse_days"]),
-            ):
+            upcoming_fields = [
+                (
+                    "certificate.max_validity_days",
+                    policy_max_validity,
+                    next_phase["max_validity_days"],
+                )
+            ]
+            if dcv_required:
+                upcoming_fields.append(
+                    ("dcv.max_age_days", policy_dcv_reuse, next_phase["dcv_reuse_days"])
+                )
+            for field, actual, limit in upcoming_fields:
                 if isinstance(actual, int) and actual > limit:
                     days_remaining = (next_phase["effective"] - as_of).days
                     readiness.append(
@@ -112,7 +131,9 @@ class StandardsWatchAgent(BaseAgent):
             checks.append(
                 CheckResult(
                     name="upcoming_standards_readiness",
-                    status="pass" if not readiness else "fail",
+                    # A future requirement is not a present compliance failure.
+                    # Keep readiness gaps in structured data for planning.
+                    status="pass" if not readiness else "not_applicable",
                     details=(
                         "Policy already satisfies the next scheduled tightening "
                         f"({next_phase['effective'].isoformat()})."
@@ -237,7 +258,7 @@ class StandardsWatchAgent(BaseAgent):
             return value.date()
         if isinstance(value, str) and value.strip():
             return datetime.fromisoformat(value.strip()).date()
-        return datetime.now(timezone.utc).date()
+        return datetime.now(UTC).date()
 
     def _parse_schedule(self, raw: Any) -> list[dict[str, Any]]:
         if not isinstance(raw, list):

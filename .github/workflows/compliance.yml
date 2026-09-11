@@ -200,17 +200,27 @@ jobs:
 
       - name: Verify cosign signature and identity
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          # Derived from the run context so the identity binding survives repo
+          # renames and forks. github.workflow_ref is set by GitHub, not by the
+          # signer, so this stays a real assertion rather than a self-issued claim.
+          EXPECTED_IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
         run: |
+          printf '%s\n' "$EXPECTED_IDENTITY" > reports/release_provenance.identity.txt
           cosign verify-blob \
             --bundle reports/release_provenance.cosign.bundle \
             --certificate reports/release_provenance.cosign.crt \
             --signature reports/release_provenance.cosign.sig \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp '^https://github.com/thulisa-n/pki-compliance-gate/.github/workflows/compliance.yml@refs/heads/main$' \
+            --certificate-identity "$EXPECTED_IDENTITY" \
             reports/release_provenance.json
 
+      # GitHub-hosted attestation storage is not available for user-owned private
+      # repositories. The cosign keyless bundle above is the portable evidence
+      # path and always runs; this step adds the lower-friction
+      # `gh attestation verify` route wherever the platform supports it.
       - name: Publish GitHub build attestation
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.visibility == 'public' }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: reports/release_provenance.json
@@ -229,6 +239,7 @@ jobs:
             cp reports/release_provenance.cosign.sig "artifacts/${GITHUB_RUN_ID}/"
             cp reports/release_provenance.cosign.crt "artifacts/${GITHUB_RUN_ID}/"
             cp reports/release_provenance.cosign.bundle "artifacts/${GITHUB_RUN_ID}/"
+            cp reports/release_provenance.identity.txt "artifacts/${GITHUB_RUN_ID}/"
           fi
           cp reports/test-results/pytest-junit.xml "artifacts/${GITHUB_RUN_ID}/"
           cp reports/test-results/pytest-report.html "artifacts/${GITHUB_RUN_ID}/"

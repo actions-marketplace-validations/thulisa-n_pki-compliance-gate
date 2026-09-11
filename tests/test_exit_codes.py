@@ -8,9 +8,20 @@ from pathlib import Path
 from main import _exit_code_from_report
 
 
-def test_exit_code_zero_for_compliant_fixture() -> None:
+def test_exit_code_zero_for_compliant_fixture(tmp_path: Path) -> None:
+    report_file = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
     process = subprocess.run(
-        [sys.executable, "src/main.py", "--cert", "tests/certificates/valid_cert.pem"],
+        [
+            sys.executable,
+            "src/main.py",
+            "--cert",
+            "tests/certificates/valid_cert.pem",
+            "--report",
+            str(report_file),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -18,9 +29,20 @@ def test_exit_code_zero_for_compliant_fixture() -> None:
     assert process.returncode == 0
 
 
-def test_exit_code_three_for_critical_failure_fixture() -> None:
+def test_exit_code_three_for_critical_failure_fixture(tmp_path: Path) -> None:
+    report_file = tmp_path / "report.json"
+    evidence_dir = tmp_path / "evidence"
     process = subprocess.run(
-        [sys.executable, "src/main.py", "--cert", "tests/certificates/sha1_cert.pem"],
+        [
+            sys.executable,
+            "src/main.py",
+            "--cert",
+            "tests/certificates/sha1_cert.pem",
+            "--report",
+            str(report_file),
+            "--evidence-dir",
+            str(evidence_dir),
+        ],
         capture_output=True,
         text=True,
         check=False,

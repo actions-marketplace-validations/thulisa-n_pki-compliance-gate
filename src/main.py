@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
             "trend",
             "apisec",
             "signals",
+            "export-cps-doc",
         ],
         default="evaluate",
         help="Execution mode",
@@ -164,6 +165,8 @@ def main() -> int:
             return _run_apisec(args)
         if args.mode == "signals":
             return _run_signals(args)
+        if args.mode == "export-cps-doc":
+            return _run_export_cps_doc(args)
         raise ValueError(f"Unsupported mode: {args.mode}")
     except (FileNotFoundError, PermissionError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -393,6 +396,17 @@ def _run_signals(args: argparse.Namespace) -> int:
     print(f"Snapshot written to {snapshot_path}")
     print(f"Recommendations written to {rec_path}")
     return 0 if result.success else 1
+
+
+def _run_export_cps_doc(args: argparse.Namespace) -> int:
+    from certguard.policy_exporter import export_policy_to_markdown
+
+    out_path = args.summary_output or "reports/compliance_summary.md"
+    export_policy_to_markdown(args.policy, out_path)
+    print("Single Source of Truth Policy-as-Code Exporter")
+    print(f"Policy: {args.policy}")
+    print(f"CP/CPS Section 7 Documentation exported to: {out_path}")
+    return 0
 
 
 def _read_json(path: Path) -> Any:

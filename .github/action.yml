@@ -1,0 +1,55 @@
+name: 'PKI Compliance Gate'
+description: 'Policy-as-Code gate for X.509 certificates, CA/B Forum Baseline Requirements, and API TLS posture in CI/CD'
+author: 'Thulisa Nikani'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  cert:
+    description: 'Path to PEM certificate file'
+    required: false
+  policy:
+    description: 'Path to custom policy YAML file'
+    required: false
+    default: 'policies/cabf_policy.yaml'
+  mode:
+    description: 'Execution mode (evaluate, apisec, summary, export-cps-doc)'
+    required: false
+    default: 'evaluate'
+  report:
+    description: 'Path for output compliance report JSON'
+    required: false
+    default: 'reports/compliance_report.json'
+  output:
+    description: 'Output format (text, json)'
+    required: false
+    default: 'text'
+
+outputs:
+  exit_code:
+    description: 'Compliance gate status code (0: compliant, 1: low, 2: med/high, 3: critical)'
+  report_path:
+    description: 'Path to generated JSON compliance report'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install CertGuard Dependencies
+      run: pip install cryptography pyyaml requests pydantic
+      shell: bash
+
+    - name: Run PKI Compliance Gate
+      run: |
+        python ${{ github.action_path }}/src/main.py \
+          --mode "${{ inputs.mode }}" \
+          --policy "${{ inputs.policy }}" \
+          --report "${{ inputs.report }}" \
+          --output "${{ inputs.output }}" \
+          ${{ inputs.cert && format('--cert "{0}"', inputs.cert) || '' }}
+      shell: bash

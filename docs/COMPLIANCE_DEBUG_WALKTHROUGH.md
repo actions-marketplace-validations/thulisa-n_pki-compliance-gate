@@ -19,7 +19,7 @@ What to review:
 Fix approach:
 
 - reissue with SHA-256 or stronger
-- rerun and confirm score/risk improve
+- rerun and confirm the finding clears and the risk level improves
 
 ## 2) Internal domain policy failure (high)
 

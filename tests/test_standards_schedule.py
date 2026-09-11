@@ -17,6 +17,9 @@ against the phase in force plus the next one.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -91,7 +94,8 @@ def test_upcoming_tightening_is_surfaced_before_it_lands(
     readiness = next(
         c for c in result.checks if c.name == "upcoming_standards_readiness"
     )
-    assert readiness.status == "fail"
+    assert readiness.status == "not_applicable"
+    assert result.success is True
 
 
 def test_drift_detected_once_the_2027_phase_is_in_force(
@@ -108,11 +112,27 @@ def test_drift_detected_once_the_2027_phase_is_in_force(
     assert "exceeds the standard maximum of 100" in check.details
 
 
-def test_dcv_reuse_drift_detected_in_2029(policy: dict, baseline: dict) -> None:
+def test_dcv_reuse_is_not_compared_when_dcv_is_disabled(
+    policy: dict, baseline: dict
+) -> None:
     result = _run(policy, baseline, "2029-04-01")
 
     drift_fields = {item["field"] for item in result.data["drifts"]}
     assert "max_validity_days" in drift_fields
+    assert "dcv_reuse_days" not in drift_fields
+    dcv_check = next(c for c in result.checks if c.name == "dcv_reuse_days_alignment")
+    assert dcv_check.status == "not_applicable"
+
+
+def test_dcv_reuse_drift_detected_when_dcv_is_required(
+    policy: dict, baseline: dict
+) -> None:
+    required = dict(policy)
+    required["dcv"] = {**policy["dcv"], "required": True}
+
+    result = _run(required, baseline, "2029-04-01")
+
+    drift_fields = {item["field"] for item in result.data["drifts"]}
     assert "dcv_reuse_days" in drift_fields
 
 
@@ -172,3 +192,41 @@ def test_missing_schedule_is_reported_not_silently_ignored(policy: dict) -> None
         c for c in result.checks if c.name == "standards_schedule_available"
     )
     assert check.status == "fail"
+
+
+def test_watch_cli_honours_as_of_and_merges_policy_defaults(tmp_path: Path) -> None:
+    partial_policy = tmp_path / "partial.yaml"
+    policy_without_optional_sections = yaml.safe_load(
+        POLICY_PATH.read_text(encoding="utf-8")
+    )
+    policy_without_optional_sections.pop("dcv")
+    partial_policy.write_text(
+        yaml.safe_dump(policy_without_optional_sections),
+        encoding="utf-8",
+    )
+    output = tmp_path / "watch.json"
+
+    process = subprocess.run(
+        [
+            sys.executable,
+            "src/main.py",
+            "--mode",
+            "watch",
+            "--policy",
+            str(partial_policy),
+            "--standards-baseline",
+            str(BASELINE_PATH),
+            "--as-of",
+            "2027-04-01",
+            "--watch-output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert process.returncode == 1
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["summary"]["as_of"] == "2027-04-01"
+    assert payload["summary"]["active_phase"]["max_validity_days"] == 100

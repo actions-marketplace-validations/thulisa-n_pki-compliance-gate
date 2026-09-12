@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -292,7 +292,7 @@ jobs:
             expected_exit: 3
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
@@ -326,7 +326,7 @@ jobs:
       PYTHONPATH: src
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
       - name: Setup Python
         uses: actions/setup-python@v7
         with:

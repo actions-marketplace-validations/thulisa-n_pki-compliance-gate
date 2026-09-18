@@ -19,6 +19,7 @@ build/
 dist/
 *.egg-info/
 
-# Private learning materials (not for public repo)
+# Local-only material (not for the public repository)
 docs/COMMANDS_AND_LEARNING_GUIDE.md
 docs/DEMO_SCRIPT.md
+docs/private/
